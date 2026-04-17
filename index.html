@@ -8,10 +8,37 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: sans-serif; background: #111; color: #eee; padding: 1rem; }
   h1 { font-size: 18px; font-weight: 500; margin-bottom: 1rem; color: #fff; }
+  
+  .instructions {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 1rem;
+    font-size: 13px;
+    color: #ccc;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+  }
+  .instructions strong { color: #fff; font-weight: 600; }
+  .instructions .step { display: flex; align-items: center; gap: 5px; }
+  .instructions .step-num { 
+    background: #444; color: #fff; border-radius: 50%; 
+    width: 18px; height: 18px; display: inline-flex; 
+    align-items: center; justify-content: center; font-size: 11px; font-weight: bold;
+  }
+
   #toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 1rem; }
-  button { background: transparent; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
-  button:hover { background: #222; }
-  label { font-size: 13px; color: #aaa; }
+  button { background: transparent; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+  button:hover { background: #333; }
+  button.primary { background: #4CAF50; color: #fff; border-color: #4CAF50; font-weight: 500; }
+  button.primary:hover { background: #45a049; }
+  
+  label { font-size: 13px; color: #aaa; display: flex; align-items: center; gap: 5px; }
+  select { background: #222; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 13px; outline: none; cursor: pointer; }
+  
   #cam-grid { display: grid; gap: 10px; }
   .cam-card { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; overflow: hidden; position: relative; }
   .cam-label { position: absolute; top: 8px; left: 10px; font-size: 12px; font-weight: 500; color: #fff; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; z-index: 2; }
@@ -28,17 +55,36 @@
 
 <h1>Multi-Camera Tester</h1>
 
+<div class="instructions">
+  <strong>Quick Start:</strong>
+  <span class="step"><span class="step-num">1</span> Choose your Resolution.</span>
+  <span class="step"><span class="step-num">2</span> Set grid layout (Columns).</span>
+  <span class="step"><span class="step-num">3</span> Click "Start Cameras".</span>
+</div>
+
 <div id="toolbar">
-  <button onclick="startAll()">Add / refresh cameras</button>
+  <button class="primary" onclick="startAll()">Start / Refresh Cameras</button>
   <button onclick="stopAll()">Stop all</button>
+  
+  <label>Resolution:
+    <select id="res-select">
+      <option value="auto">Auto</option>
+      <option value="720p">720p</option>
+      <option value="1080p30">1080p (30fps)</option>
+      <option value="1080p60">1080p (60fps)</option>
+      <option value="4k">4K</option>
+    </select>
+  </label>
+
   <label>Columns:
     <input type="range" min="1" max="4" value="2" id="cols-range" style="width:80px;vertical-align:middle;margin:0 6px" oninput="setCols(this.value)">
     <span id="cols-val">2</span>
   </label>
-  <button onclick="toggleMirror()">Mirror toggle</button>
+  
+  <button onclick="toggleMirror()">Toggle Mirror</button>
 </div>
 
-<div id="msg">Click "Add / refresh cameras" to begin.</div>
+<div id="msg">Ready.</div>
 <div id="cam-grid" style="grid-template-columns: repeat(2, 1fr)"></div>
 
 <script>
@@ -67,6 +113,17 @@ function toggleMirror() {
   });
 }
 
+function getVideoConstraints() {
+  const res = document.getElementById('res-select').value;
+  switch(res) {
+    case '720p': return { width: { ideal: 1280 }, height: { ideal: 720 } };
+    case '1080p30': return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+    case '1080p60': return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } };
+    case '4k': return { width: { ideal: 3840 }, height: { ideal: 2160 } };
+    default: return true; // auto
+  }
+}
+
 async function getDevices() {
   await navigator.mediaDevices.getUserMedia({video: true}).catch(() => {});
   const all = await navigator.mediaDevices.enumerateDevices();
@@ -90,6 +147,8 @@ async function startAll() {
 
   if (!devices.length) { msg.textContent = 'No cameras found.'; return; }
   msg.textContent = `Found ${devices.length} camera(s). Starting streams...`;
+
+  const baseConstraints = getVideoConstraints();
 
   devices.forEach((dev, i) => {
     const card = document.createElement('div');
@@ -123,7 +182,11 @@ async function startAll() {
     card.appendChild(timerEl);
     grid.appendChild(card);
 
-    navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: dev.deviceId } } })
+    const specificConstraints = (typeof baseConstraints === 'object') 
+      ? { ...baseConstraints, deviceId: { exact: dev.deviceId } }
+      : { deviceId: { exact: dev.deviceId } };
+
+    navigator.mediaDevices.getUserMedia({ video: specificConstraints })
       .then(stream => {
         streams.push(stream);
         vid.srcObject = stream;
@@ -143,7 +206,7 @@ async function startAll() {
       })
       .catch(err => {
         dot.classList.add('err');
-        info.textContent = 'Error: ' + err.message;
+        info.textContent = 'Error: ' + err.name + ' - ' + err.message;
       });
   });
 
@@ -156,6 +219,7 @@ function stopAll() {
   timers.forEach(iv => clearInterval(iv));
   timers.length = 0;
   document.getElementById('cam-grid').innerHTML = '';
+  document.getElementById('msg').textContent = 'Cameras stopped.';
 }
 </script>
 </body>
