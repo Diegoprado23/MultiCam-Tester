@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Camera Tester</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #111; color: #eee; padding: 1rem; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 1rem; color: #fff; }
+  #toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 1rem; }
+  button { background: transparent; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #222; }
+  label { font-size: 13px; color: #aaa; }
+  #cam-grid { display: grid; gap: 10px; }
+  .cam-card { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; overflow: hidden; position: relative; }
+  .cam-label { position: absolute; top: 8px; left: 10px; font-size: 12px; font-weight: 500; color: #fff; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; z-index: 2; }
+  .cam-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; z-index: 2; background: #555; }
+  .cam-status.live { background: #4CAF50; }
+  .cam-status.err  { background: #E24B4A; }
+  video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
+  .cam-info { padding: 8px 12px; font-size: 12px; color: #888; }
+  #msg { font-size: 13px; color: #888; margin-bottom: 1rem; min-height: 18px; }
+</style>
+</head>
+<body>
+
+<h1>Multi-Camera Tester</h1>
+
+<div id="toolbar">
+  <button onclick="startAll()">Add / refresh cameras</button>
+  <button onclick="stopAll()">Stop all</button>
+  <label>Columns:
+    <input type="range" min="1" max="4" value="2" id="cols-range" style="width:80px;vertical-align:middle;margin:0 6px" oninput="setCols(this.value)">
+    <span id="cols-val">2</span>
+  </label>
+  <button onclick="toggleMirror()">Mirror toggle</button>
+</div>
+
+<div id="msg">Click "Add / refresh cameras" to begin.</div>
+<div id="cam-grid" style="grid-template-columns: repeat(2, 1fr)"></div>
+
+<script>
+const streams = [];
+let mirrored = false;
+
+function setCols(n) {
+  document.getElementById('cols-val').textContent = n;
+  document.getElementById('cam-grid').style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+}
+
+function toggleMirror() {
+  mirrored = !mirrored;
+  document.querySelectorAll('video').forEach(v => {
+    v.style.transform = mirrored ? 'scaleX(-1)' : '';
+  });
+}
+
+async function getDevices() {
+  await navigator.mediaDevices.getUserMedia({video: true}).catch(() => {});
+  const all = await navigator.mediaDevices.enumerateDevices();
+  return all.filter(d => d.kind === 'videoinput');
+}
+
+async function startAll() {
+  stopAll();
+  const msg = document.getElementById('msg');
+  const grid = document.getElementById('cam-grid');
+  grid.innerHTML = '';
+  msg.textContent = 'Requesting camera access...';
+
+  let devices;
+  try {
+    devices = await getDevices();
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    return;
+  }
+
+  if (!devices.length) { msg.textContent = 'No cameras found.'; return; }
+  msg.textContent = `Found ${devices.length} camera(s). Starting streams...`;
+
+  devices.forEach((dev, i) => {
+    const card = document.createElement('div');
+    card.className = 'cam-card';
+
+    const label = document.createElement('div');
+    label.className = 'cam-label';
+    label.textContent = dev.label || `Camera ${i + 1}`;
+
+    const dot = document.createElement('div');
+    dot.className = 'cam-status';
+
+    const vid = document.createElement('video');
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.muted = true;
+    if (mirrored) vid.style.transform = 'scaleX(-1)';
+
+    const info = document.createElement('div');
+    info.className = 'cam-info';
+    info.textContent = 'Starting...';
+
+    card.appendChild(label);
+    card.appendChild(dot);
+    card.appendChild(vid);
+    card.appendChild(info);
+    grid.appendChild(card);
+
+    navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: dev.deviceId } } })
+      .then(stream => {
+        streams.push(stream);
+        vid.srcObject = stream;
+        dot.classList.add('live');
+        vid.onloadedmetadata = () => {
+          const t = stream.getVideoTracks()[0];
+          const s = t.getSettings();
+          info.textContent = `${s.width || '?'}×${s.height || '?'} · ${Math.round(s.frameRate || 0)} fps · ${t.label}`;
+        };
+      })
+      .catch(err => {
+        dot.classList.add('err');
+        info.textContent = 'Error: ' + err.message;
+      });
+  });
+
+  msg.textContent = `Showing ${devices.length} camera(s).`;
+}
+
+function stopAll() {
+  streams.forEach(s => s.getTracks().forEach(t => t.stop()));
+  streams.length = 0;
+  document.getElementById('cam-grid').innerHTML = '';
+}
+</script>
+</body>
+</html>
