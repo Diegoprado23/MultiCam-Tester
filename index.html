@@ -19,7 +19,8 @@
   .cam-status.live { background: #4CAF50; }
   .cam-status.err  { background: #E24B4A; }
   video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; object-fit: cover; }
-  .cam-info { padding: 8px 12px; font-size: 12px; color: #888; }
+  .cam-info { padding: 6px 12px; font-size: 12px; color: #888; }
+  .cam-timer { padding: 0 12px 8px; font-size: 12px; color: #4CAF50; font-variant-numeric: tabular-nums; }
   #msg { font-size: 13px; color: #888; margin-bottom: 1rem; min-height: 18px; }
 </style>
 </head>
@@ -42,7 +43,17 @@
 
 <script>
 const streams = [];
+const timers = [];
 let mirrored = false;
+
+function formatTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return h > 0
+    ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
 
 function setCols(n) {
   document.getElementById('cols-val').textContent = n;
@@ -101,10 +112,15 @@ async function startAll() {
     info.className = 'cam-info';
     info.textContent = 'Starting...';
 
+    const timerEl = document.createElement('div');
+    timerEl.className = 'cam-timer';
+    timerEl.textContent = '';
+
     card.appendChild(label);
     card.appendChild(dot);
     card.appendChild(vid);
     card.appendChild(info);
+    card.appendChild(timerEl);
     grid.appendChild(card);
 
     navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: dev.deviceId } } })
@@ -116,6 +132,13 @@ async function startAll() {
           const t = stream.getVideoTracks()[0];
           const s = t.getSettings();
           info.textContent = `${s.width || '?'}×${s.height || '?'} · ${Math.round(s.frameRate || 0)} fps · ${t.label}`;
+          let secs = 0;
+          timerEl.textContent = 'Connected: 00:00';
+          const iv = setInterval(() => {
+            secs++;
+            timerEl.textContent = `Connected: ${formatTime(secs)}`;
+          }, 1000);
+          timers.push(iv);
         };
       })
       .catch(err => {
@@ -130,6 +153,8 @@ async function startAll() {
 function stopAll() {
   streams.forEach(s => s.getTracks().forEach(t => t.stop()));
   streams.length = 0;
+  timers.forEach(iv => clearInterval(iv));
+  timers.length = 0;
   document.getElementById('cam-grid').innerHTML = '';
 }
 </script>
